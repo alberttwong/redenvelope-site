@@ -1,0 +1,5 @@
+body { font: 17px/1.5 -apple-system, BlinkMacSystemFont, "PingFang TC", sans-serif; max-width: 640px; margin: 0 auto; padding: 32px 20px; color: #1d1d1f; }
+h1 { color: #b5121b; }
+a { color: #b5121b; }
+.note { color: #6e6e73; font-size: 15px; }
+nav a { margin-right: 16px; }
