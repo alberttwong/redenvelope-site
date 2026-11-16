@@ -9,15 +9,26 @@
 <body>
 <nav><a href="./">Support</a><a href="privacy.html">Privacy Policy</a></nav>
 <h1>Privacy Policy</h1>
-<p class="note">Effective November 7, 2026</p>
+<p class="note">Updated November 16, 2026, for the version that adds "opened" notices and Apple Wallet. Earlier versions send nothing to our server.</p>
 
-<p><strong>Red Envelope collects no data.</strong> It has no accounts, analytics, advertising or tracking, and it doesn't send anything to a server run by us.</p>
+<p><strong>Red Envelope collects no personal data.</strong> It has no accounts, analytics, advertising or tracking. Two optional features use a small server we run, and this page says exactly what they send and how long it's kept.</p>
 
 <h2>What stays on your device</h2>
-<p>The app saves your language choice and an envelope you haven't finished, so you can pick up where you left off. These stay on your device and are removed when you delete the app.</p>
+<p>The app saves your language choice, an envelope you haven't finished, and whether you turned on the Lunar New Year reminder. The reminder is scheduled on your device and never reaches our server. These stay on your device and are removed when you delete the app.</p>
+
+<h2>"Opened" notices (optional)</h2>
+<p>If you turn on "When my envelope is opened" in the app, it makes a random ID for your device, not linked to your name, phone number or Apple Account. It sends that ID, Apple's push notification token for the app, and your screen language to our server, so a notice can reach you.</p>
+<p>When you send an envelope with "Tell me when it's opened", the envelope carries a separate random ID, and our server records which device ID to notify. The person you send it to sees "The sender will know when you open this". When they open it, their app sends only that envelope ID. Our server sends you one notification and deletes the envelope record.</p>
+<p>Our server deletes an envelope record when it's opened, or after 30 days. It deletes a device's record after 180 days without hearing from it, or as soon as Apple reports its push token is no longer valid. Turning the switch off stops new requests from your device; its record is then deleted within 180 days.</p>
+
+<h2>Apple Wallet (optional)</h2>
+<p>If someone who received a digital lucky charm taps "Add to Apple Wallet", the app sends our server only the charm's occasion, script and style, and gets back a signed Wallet pass. The pass shows the charm and its blessing, never the greeting. We don't keep the request.</p>
+
+<h2>Our server</h2>
+<p>The server runs on Amazon Web Services in the United States, with data stored in MongoDB Atlas, also on AWS in the United States. Notices are delivered by Apple's push notification service. To limit abuse, the server counts requests from each network address for about two minutes, then deletes the count. Its logs hold errors and counts, never device IDs, push tokens or greetings.</p>
 
 <h2>What you send</h2>
-<p>An envelope you send contains the greeting, occasion and design. It doesn't contain the amount. It travels through Apple's Messages service like any other message, between you and the people in the conversation.</p>
+<p>An envelope you send contains the greeting, occasion and design, whether it holds money or a digital lucky charm, and, if you asked for an "opened" notice, the random envelope ID. It doesn't contain an amount. It travels through Apple's Messages service like any other message, between you and the people in the conversation; our server never sees the greeting.</p>
 
 <h2>Money</h2>
 <p>Red Envelope never sees or handles money or payment details. You send money with Apple Cash, which is covered by Apple's own privacy policy.</p>
@@ -26,7 +37,7 @@
 <p>If someone opens an envelope without the app installed, their browser loads a page on this site, which is hosted by GitHub Pages. GitHub may log visits as described in its privacy statement. We don't receive or keep those logs.</p>
 
 <h2>Children</h2>
-<p>The app doesn't collect information from anyone, including children.</p>
+<p>The app doesn't collect personal information from anyone, including children. The optional random IDs above aren't linked to a person.</p>
 
 <h2>Changes and contact</h2>
 <p>Changes to this policy will be posted on this page. Questions: <a href="https://github.com/alberttwong/redenvelope-site/issues">open an issue</a>.</p>
