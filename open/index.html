@@ -2,15 +2,377 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
 <title>You got a red envelope</title>
 <link rel="stylesheet" href="../style.css">
+<style>
+  /* The envelope page. The plain page below it is what shows if the link is broken. */
+  body.envelope-page {
+    max-width: none; margin: 0; padding: 0; min-height: 100vh; min-height: 100dvh;
+    background: linear-gradient(var(--body-top), var(--body-bottom));
+    color: var(--accent);
+    display: flex; flex-direction: column; align-items: center;
+    overflow-x: hidden;
+  }
+  .envelope-page main {
+    flex: 1; width: 100%; max-width: 560px; box-sizing: border-box;
+    padding: 48px 24px 24px; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 16px; text-align: center;
+  }
+  .envelope-page a { color: var(--accent); }
+  .envelope-page footer { padding: 16px 24px calc(16px + env(safe-area-inset-bottom)); font-size: 13px; color: var(--detail); text-align: center; }
+  .envelope-page footer a { color: var(--detail); }
+  .lang { position: absolute; top: 12px; right: 16px; display: flex; gap: 4px; }
+  .lang button {
+    font: inherit; font-size: 13px; padding: 4px 10px; border-radius: 999px; cursor: pointer;
+    border: 1px solid var(--detail); background: transparent; color: var(--detail);
+  }
+  .lang button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--body-bottom); }
+
+  .open-button { border: 0; padding: 0; background: none; cursor: pointer; border-radius: 16px; }
+  .open-button:focus-visible { outline: 3px solid var(--accent); outline-offset: 6px; }
+  .open-button svg { display: block; height: min(300px, 48vh); width: auto; filter: drop-shadow(0 6px 10px rgba(0,0,0,.3)); }
+  .open-button:hover svg { transform: rotate(-2deg); transition: transform .2s; }
+  .tap { font-weight: 600; font-size: 19px; margin: 0; }
+  .notice { font-size: 14px; color: var(--detail); margin: 0; }
+
+  .charm svg { display: block; height: min(240px, 36vh); width: auto; filter: drop-shadow(0 6px 10px rgba(0,0,0,.3)); }
+  .charm-translation { font-size: 15px; font-weight: 600; color: var(--detail); margin: 0; }
+  .greeting { font-size: clamp(26px, 8vw, 34px); font-weight: 700; margin: 0; line-height: 1.3; overflow-wrap: anywhere; }
+  .translation { font-size: 20px; font-weight: 600; margin: 0; }
+  .gift-note { font-size: 14px; color: var(--detail); margin: 0; max-width: 34em; }
+  .get-app { font-size: 13px; color: var(--detail); margin: 8px 0 0; }
+
+  .revealed > * { animation: pop .5s cubic-bezier(.2,1.4,.4,1) both; }
+  .revealed > :nth-child(2) { animation-delay: .08s; }
+  .revealed > :nth-child(3) { animation-delay: .16s; }
+  .revealed > :nth-child(n+4) { animation-delay: .24s; }
+  @keyframes pop { from { opacity: 0; transform: scale(.7); } to { opacity: 1; transform: none; } }
+
+  .confetti { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+  .confetti i { position: absolute; top: -12px; width: 8px; height: 5px; animation: fall linear forwards; }
+  @keyframes fall { to { transform: translateY(110vh) rotate(var(--spin)); } }
+
+  @media (prefers-reduced-motion: reduce) {
+    .revealed > * { animation: none; }
+    .confetti { display: none; }
+    .open-button:hover svg { transform: none; }
+  }
+</style>
 </head>
 <body>
+<!-- Shown when the link is incomplete or JavaScript is off. -->
+<div id="fallback">
 <h1>🧧 You got a red envelope</h1>
-<p>Someone sent you a red envelope (紅包) in Messages. To open it and read the greeting, install <strong>Red Envelope</strong> from the App Store on your iPhone, then tap the envelope in Messages again.</p>
-<p>If the envelope holds money, it's sent separately with Apple Cash, so check your Messages for it. Some envelopes hold a digital lucky charm instead, with no money.</p>
-<p class="note">有人在「訊息」傳給你一個紅包。請在 App Store 安裝 <strong>Red Envelope</strong>，再點一下訊息中的紅包即可打開。</p>
+<p>Someone sent you a red envelope (紅包). This link seems to be incomplete, so the envelope can't be shown here. Ask the sender to send it again.</p>
+<p class="note">有人傳給你一個紅包，但這個連結不完整，無法打開。請對方再傳一次。</p>
 <p class="note"><a href="../">About Red Envelope</a> · <a href="../privacy.html">Privacy Policy</a></p>
+</div>
+
+<script>
+"use strict";
+(() => {
+  // Must match Backend.baseURL in RedEnvelopeKit.
+  const BACKEND = "https://a5c4mkikvoaunxhcy2i2jomms40inbbp.lambda-url.us-west-2.on.aws/";
+  const MAX_GREETING = 80;
+
+  // Mirrors EnvelopeDesign.swift. Keep the two in step.
+  const OCCASIONS = {
+    lunarNewYear: {
+      greeting: { traditional: "恭喜發財，大吉大利！", simplified: "恭喜发财，大吉大利！" },
+      english: "Wishing you prosperity and good fortune!",
+      character: { traditional: "福", simplified: "福" },
+      blessing: { traditional: "招財進寶", simplified: "招财进宝" },
+      blessingEnglish: "Wealth and treasure come your way",
+    },
+    wedding: {
+      greeting: { traditional: "百年好合，永結同心！", simplified: "百年好合，永结同心！" },
+      english: "May you have a hundred years of happiness, and be one in heart!",
+      character: { traditional: "囍", simplified: "囍" },
+      blessing: { traditional: "百年好合", simplified: "百年好合" },
+      blessingEnglish: "A hundred years together",
+    },
+    birthday: {
+      greeting: { traditional: "生日快樂，福壽安康！", simplified: "生日快乐，福寿安康！" },
+      english: "Happy birthday! Wishing you good fortune, long life and health!",
+      character: { traditional: "壽", simplified: "寿" },
+      blessing: { traditional: "福壽安康", simplified: "福寿安康" },
+      blessingEnglish: "Good fortune, long life and health",
+    },
+    newBaby: {
+      greeting: { traditional: "恭喜喜獲寶貝，健康快樂！", simplified: "恭喜喜获宝贝，健康快乐！" },
+      english: "Congratulations on your precious baby! Wishing them health and happiness!",
+      character: { traditional: "喜", simplified: "喜" },
+      blessing: { traditional: "平安健康", simplified: "平安健康" },
+      blessingEnglish: "Safe and healthy",
+    },
+    graduation: {
+      greeting: { traditional: "學業有成，前程似錦！", simplified: "学业有成，前程似锦！" },
+      english: "Congratulations on your studies! Wishing you a bright future!",
+      character: { traditional: "賀", simplified: "贺" },
+      blessing: { traditional: "前程似錦", simplified: "前程似锦" },
+      blessingEnglish: "A bright future",
+    },
+  };
+
+  const rgb = (r, g, b) => `rgb(${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)})`;
+  const RED = rgb(0.72, 0.07, 0.11), DEEP_RED = rgb(0.50, 0.03, 0.07), GOLD = rgb(0.97, 0.79, 0.36);
+  const STYLES = {
+    classic: { body: [RED, DEEP_RED], flap: DEEP_RED, accent: GOLD, detail: "rgba(255,255,255,.85)" },
+    gold: { body: [GOLD, rgb(0.85, 0.62, 0.18)], flap: rgb(0.80, 0.56, 0.14), accent: DEEP_RED, detail: "rgba(128,8,18,.85)" },
+    blossom: { body: [rgb(0.91, 0.33, 0.45), rgb(0.72, 0.14, 0.30)], flap: rgb(0.72, 0.14, 0.30), accent: rgb(1, 0.93, 0.80), detail: "rgba(255,255,255,.85)" },
+  };
+
+  // The page's own words. The envelope itself is always in Chinese with English.
+  const TEXT = {
+    en: {
+      title: "You got a red envelope",
+      tap: "Tap to open", open: "Open red envelope",
+      senderWillKnow: "The sender will know when you open this",
+      money: "Your gift arrives separately. The sender pays it themselves, so look for it in your messages or payment app.",
+      charm: "A digital lucky charm for you. It's a picture, with no money.",
+      getApp: "Sent with Red Envelope, an iMessage app for iPhone.",
+      about: "About Red Envelope", privacy: "Privacy Policy",
+    },
+    traditional: {
+      title: "你收到一個紅包",
+      tap: "點一下打開", open: "打開紅包",
+      senderWillKnow: "打開後，對方會收到通知",
+      money: "禮物會另外送達。金額由對方另行支付，請留意你的訊息或付款 App。",
+      charm: "送你一張電子幸運符，祝你好運。這是一張圖片，沒有金額。",
+      getApp: "這個紅包由 iPhone 的 iMessage App「Red Envelope」傳送。",
+      about: "關於 Red Envelope", privacy: "隱私權政策",
+    },
+    simplified: {
+      title: "你收到一个红包",
+      tap: "点一下打开", open: "打开红包",
+      senderWillKnow: "打开后，对方会收到通知",
+      money: "礼物会另外送达。金额由对方另行支付，请留意你的信息或付款 App。",
+      charm: "送你一张电子幸运符，祝你好运。这是一张图片，没有金额。",
+      getApp: "这个红包由 iPhone 的 iMessage App“Red Envelope”发送。",
+      about: "关于 Red Envelope", privacy: "隐私政策",
+    },
+  };
+
+  // Mirrors Envelope(url:). Links can be crafted by anyone: reject anything unexpected.
+  function parse(search) {
+    const q = new URLSearchParams(search);
+    const one = (name) => (q.getAll(name).length > 1 ? null : q.get(name));
+    if (one("v") !== "1") return null;
+    const greeting = one("greeting");
+    const occasion = one("occasion"), style = one("style"), script = one("script");
+    if (greeting === null || !Object.hasOwn(OCCASIONS, occasion ?? "") || !Object.hasOwn(STYLES, style ?? "")) return null;
+    if (script !== "traditional" && script !== "simplified") return null;
+    const trimmed = greeting.trim();
+    // Swift counts characters as grapheme clusters, so count the same way where possible.
+    const length = typeof Intl.Segmenter === "function"
+      ? [...new Intl.Segmenter().segment(greeting)].length : [...greeting].length;
+    if (!trimmed || length > MAX_GREETING) return null;
+
+    let gift = "money";
+    if (q.has("gift")) {
+      gift = one("gift");
+      if (gift !== "money" && gift !== "talisman") return null;
+    }
+    let eid = null;
+    if (q.has("eid")) {
+      eid = one("eid");
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(eid ?? "")) return null;
+      eid = eid.toLowerCase();
+    }
+    return { greeting, occasion, style, script, gift, eid };
+  }
+
+  function defaultLanguage(script) {
+    for (const tag of navigator.languages ?? [navigator.language]) {
+      const t = (tag || "").toLowerCase();
+      if (!t.startsWith("zh")) { if (t.startsWith("en")) return "en"; continue; }
+      if (/hant|-tw|-hk|-mo/.test(t)) return "traditional";
+      if (/hans|-cn|-sg|-my/.test(t)) return "simplified";
+      return script;
+    }
+    return "en";
+  }
+
+  const SVG = "http://www.w3.org/2000/svg";
+  function el(name, attrs = {}, text) {
+    const node = document.createElementNS(SVG, name);
+    for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+    if (text !== undefined) node.textContent = text;
+    return node;
+  }
+  const SERIF = '"Songti TC","Songti SC","Noto Serif CJK TC","Noto Serif CJK SC","Noto Serif TC","Noto Serif SC",serif';
+
+  // Mirrors EnvelopeArtwork in Theme.swift: 0.72 aspect, flap over the top 36%.
+  function envelopeArt(design) {
+    const s = STYLES[design.style];
+    const w = 216, h = 300, line = 3;
+    const svg = el("svg", { viewBox: `0 0 ${w} ${h}`, "aria-hidden": "true" });
+    const defs = el("defs");
+    const grad = el("linearGradient", { id: "body", x1: 0, y1: 0, x2: 0, y2: 1 });
+    grad.append(el("stop", { offset: 0, "stop-color": s.body[0] }), el("stop", { offset: 1, "stop-color": s.body[1] }));
+    const clip = el("clipPath", { id: "shape" });
+    clip.append(el("rect", { width: w, height: h, rx: w * 0.06 }));
+    defs.append(grad, clip);
+    const g = el("g", { "clip-path": "url(#shape)" });
+    g.append(el("rect", { width: w, height: h, fill: "url(#body)" }));
+    g.append(el("text", {
+      x: w / 2, y: h * 0.64 + h * 0.1, "text-anchor": "middle", "font-size": h * 0.3,
+      "font-weight": 700, "font-family": SERIF, fill: s.accent,
+    }, OCCASIONS[design.occasion].character[design.script]));
+    const fh = h * 0.36;
+    g.append(el("path", { d: `M0 0 H${w} Q${w / 2} ${fh * 2} 0 0 Z`, fill: s.flap, stroke: s.accent, "stroke-width": line }));
+    svg.append(defs, g, el("rect", {
+      x: line / 2, y: line / 2, width: w - line, height: h - line, rx: w * 0.06 - line / 2,
+      fill: "none", stroke: s.accent, "stroke-width": line,
+    }));
+    return svg;
+  }
+
+  // Mirrors TalismanArtwork: yellow paper, red ink, character in a circle, blessing down the middle.
+  function charmArt(design) {
+    const o = OCCASIONS[design.occasion];
+    const ink = rgb(0.75, 0.06, 0.08);
+    const w = 160, h = 320, line = 3.2, inset = w * 0.07;
+    const svg = el("svg", { viewBox: `0 0 ${w} ${h}`, role: "img", "aria-label": `Digital lucky charm: ${o.blessing[design.script]}` });
+    const defs = el("defs");
+    const grad = el("linearGradient", { id: "paper", x1: 0, y1: 0, x2: 0, y2: 1 });
+    grad.append(el("stop", { offset: 0, "stop-color": rgb(1, 0.9, 0.45) }), el("stop", { offset: 1, "stop-color": rgb(0.96, 0.78, 0.30) }));
+    defs.append(grad);
+    svg.append(defs, el("rect", { width: w, height: h, rx: w * 0.04, fill: "url(#paper)" }));
+    svg.append(el("rect", { x: inset + line / 2, y: inset + line / 2, width: w - 2 * inset - line, height: h - 2 * inset - line, fill: "none", stroke: ink, "stroke-width": line }));
+    const i2 = inset * 1.6;
+    svg.append(el("rect", { x: i2, y: i2, width: w - 2 * i2, height: h - 2 * i2, fill: "none", stroke: ink, "stroke-width": line / 2 }));
+    const cy = 30 + w * 0.25;
+    svg.append(el("circle", { cx: w / 2, cy, r: w * 0.25, fill: "none", stroke: ink, "stroke-width": line }));
+    svg.append(el("text", { x: w / 2, y: cy + w * 0.12, "text-anchor": "middle", "font-size": w * 0.34, "font-weight": 900, "font-family": SERIF, fill: ink }, o.character[design.script]));
+    [...o.blessing[design.script]].forEach((c, i) => {
+      svg.append(el("text", { x: w / 2, y: cy + w * 0.25 + 36 + i * w * 0.24, "text-anchor": "middle", "font-size": w * 0.2, "font-weight": 700, "font-family": SERIF, fill: ink }, c));
+    });
+    // A simple seal in place of the app's SF Symbol.
+    const sy = h - 34;
+    svg.append(el("rect", { x: w / 2 - 9, y: sy - 9, width: 18, height: 18, rx: 3, fill: ink, transform: `rotate(45 ${w / 2} ${sy})` }));
+    return svg;
+  }
+
+  function confetti() {
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const box = document.createElement("div");
+    box.className = "confetti";
+    box.setAttribute("aria-hidden", "true");
+    const colors = [GOLD, "#fff", "orange"];
+    for (let i = 0; i < 60; i++) {
+      const p = document.createElement("i");
+      const size = 5 + Math.random() * 5;
+      p.style.cssText = `left:${Math.random() * 100}%;width:${size}px;height:${size * 0.6}px;background:${colors[i % 3]};` +
+        `animation-duration:${1.7 + Math.random() * 1.6}s;animation-delay:${Math.random() * 0.8}s;--spin:${360 + Math.random() * 720}deg`;
+      box.append(p);
+    }
+    document.body.append(box);
+    setTimeout(() => box.remove(), 5000);
+  }
+
+  function reportOpened(eid) {
+    // Best effort, like the app. Only the random envelope id is sent.
+    try {
+      fetch(new URL("opened", BACKEND), {
+        method: "POST", mode: "cors", keepalive: true,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ envelopeId: eid }),
+      }).catch(() => {});
+    } catch {}
+  }
+
+  const env = parse(location.search);
+  if (!env) return;
+
+  const style = STYLES[env.style];
+  const occasion = OCCASIONS[env.occasion];
+  const root = document.documentElement.style;
+  root.setProperty("--body-top", style.body[0]);
+  root.setProperty("--body-bottom", style.body[1]);
+  root.setProperty("--accent", style.accent);
+  root.setProperty("--detail", style.detail);
+  const theme = document.createElement("meta");
+  theme.name = "theme-color";
+  theme.content = style.body[0];
+  document.head.append(theme);
+
+  document.getElementById("fallback").remove();
+  document.body.className = "envelope-page";
+
+  let lang = defaultLanguage(env.script);
+  let opened = false;
+  const main = document.createElement("main");
+  const footer = document.createElement("footer");
+  const switcher = document.createElement("div");
+  switcher.className = "lang";
+  switcher.setAttribute("role", "group");
+  switcher.setAttribute("aria-label", "Language");
+  for (const [code, label] of [["en", "EN"], ["traditional", "繁"], ["simplified", "简"]]) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = label;
+    b.dataset.lang = code;
+    b.addEventListener("click", () => { lang = code; render(); });
+    switcher.append(b);
+  }
+  document.body.append(switcher, main, footer);
+
+  const p = (cls, text) => { const n = document.createElement("p"); n.className = cls; n.textContent = text; return n; };
+
+  function render() {
+    const t = TEXT[lang];
+    document.documentElement.lang = lang === "en" ? "en" : lang === "traditional" ? "zh-Hant" : "zh-Hans";
+    document.title = `🧧 ${t.title}`;
+    for (const b of switcher.children) b.setAttribute("aria-pressed", String(b.dataset.lang === lang));
+    main.replaceChildren();
+    main.classList.toggle("revealed", opened);
+
+    if (!opened) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "open-button";
+      button.setAttribute("aria-label", t.open);
+      button.append(envelopeArt(env));
+      button.addEventListener("click", open);
+      main.append(button, p("tap", t.tap));
+      if (env.eid) main.append(p("notice", `🔔 ${t.senderWillKnow}`));
+    } else {
+      if (env.gift === "talisman") {
+        const charm = document.createElement("div");
+        charm.className = "charm";
+        charm.append(charmArt(env));
+        main.append(charm, p("charm-translation", occasion.blessingEnglish));
+      }
+      const greeting = p("greeting", env.greeting);
+      greeting.lang = env.script === "traditional" ? "zh-Hant" : "zh-Hans";
+      main.append(greeting);
+      // A greeting the sender wrote themselves has no translation.
+      if (env.greeting === occasion.greeting[env.script]) main.append(p("translation", occasion.english));
+      main.append(p("gift-note", env.gift === "talisman" ? t.charm : t.money));
+      main.append(p("get-app", t.getApp));
+    }
+
+    footer.replaceChildren();
+    const about = Object.assign(document.createElement("a"), { href: "../", textContent: t.about });
+    const privacy = Object.assign(document.createElement("a"), { href: "../privacy.html", textContent: t.privacy });
+    footer.append(about, " · ", privacy);
+  }
+
+  function open() {
+    if (opened) return;
+    opened = true;
+    if (env.eid) reportOpened(env.eid);
+    render();
+    confetti();
+    main.querySelector(".greeting")?.setAttribute("tabindex", "-1");
+    main.querySelector(".greeting")?.focus({ preventScroll: true });
+  }
+
+  render();
+})();
+</script>
 </body>
 </html>
