@@ -157,8 +157,21 @@
 
   // Mirrors Envelope(url:). Links can be crafted by anyone: reject anything unexpected.
   function parse(search) {
-    const q = new URLSearchParams(search);
-    const one = (name) => (q.getAll(name).length > 1 ? null : q.get(name));
+    // Not URLSearchParams: it reads "+" as a space, but the app's URLComponents
+    // leaves a typed "+" as is, so "1+1" would show as "1 1".
+    const pairs = [];
+    for (const part of search.replace(/^\?/, "").split("&")) {
+      if (!part) continue;
+      const at = part.indexOf("=");
+      try {
+        pairs.push([decodeURIComponent(at < 0 ? part : part.slice(0, at)), at < 0 ? "" : decodeURIComponent(part.slice(at + 1))]);
+      } catch { return null; }
+    }
+    const q = {
+      has: (name) => pairs.some(([k]) => k === name),
+      getAll: (name) => pairs.filter(([k]) => k === name).map(([, v]) => v),
+    };
+    const one = (name) => { const all = q.getAll(name); return all.length === 1 ? all[0] : null; };
     if (one("v") !== "1") return null;
     const greeting = one("greeting");
     const occasion = one("occasion"), style = one("style"), script = one("script");
